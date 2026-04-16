@@ -1,8 +1,8 @@
-import { computed, type Ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 
 import { useVIntl } from '#ui/composables/i18n'
+import { useServerBackend } from '#ui/composables/useServerBackend'
 import {
-	injectModrinthClient,
 	injectModrinthServerContext,
 	injectNotificationManager,
 } from '#ui/providers'
@@ -11,9 +11,11 @@ export type PowerAction = 'Start' | 'Stop' | 'Restart' | 'Kill'
 
 export function useServerPowerAction(options?: { disabled?: Ref<boolean> }) {
 	const { formatMessage } = useVIntl()
-	const client = injectModrinthClient()
 	const { serverId, server, powerState, busyReasons } = injectModrinthServerContext()
 	const { addNotification } = injectNotificationManager()
+	// FORK: AMP dispatch — wrap the plain string serverId in a computed ref
+	const serverIdRef = computed(() => serverId)
+	const { power } = useServerBackend(serverIdRef)
 
 	const isInstalling = computed(() => server.value.status === 'installing')
 	const isRunning = computed(() => powerState.value === 'running')
@@ -45,7 +47,8 @@ export function useServerPowerAction(options?: { disabled?: Ref<boolean> }) {
 
 	async function sendPowerAction(action: PowerAction) {
 		try {
-			await client.archon.servers_v0.power(serverId, action)
+			// FORK: AMP dispatch — routes to AMP or Archon based on server ID prefix
+			await power(action)
 		} catch (error) {
 			console.error(`Error performing ${action} on server:`, error)
 			addNotification({

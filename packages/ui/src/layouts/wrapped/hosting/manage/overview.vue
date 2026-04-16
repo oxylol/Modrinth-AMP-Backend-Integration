@@ -37,11 +37,11 @@
 <script setup lang="ts">
 import type { Mclogs } from '@modrinth/api-client'
 import { useStorage } from '@vueuse/core'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, toRef, watch } from 'vue'
 
-import { useModrinthServersConsole } from '#ui/composables'
+import { useModrinthServersConsole, useServerBackend } from '#ui/composables'
 import { ConsolePageLayout, provideConsoleManager } from '#ui/layouts/shared/console'
-import { injectModrinthClient, injectModrinthServerContext } from '#ui/providers'
+import { injectModrinthClient, injectModrinthServerContext, isAmpServerId } from '#ui/providers'
 
 import ServerManageStats from './components/ServerManageStats.vue'
 
@@ -65,6 +65,8 @@ const {
 	powerStateDetails: _powerStateDetails,
 } = injectModrinthServerContext()
 const modrinthServersConsole = useModrinthServersConsole()
+// FORK: AMP dispatch
+const { sendCommand, isAmp } = useServerBackend(toRef(() => serverId))
 
 watch(
 	() => props.showAdvancedDebugInfo,
@@ -81,7 +83,8 @@ const dismissedUntil = useStorage(`modrinth-crash-dismissed-${serverId}`, 0)
 const isDismissed = () => Date.now() < dismissedUntil.value
 
 const inspectError = async () => {
-	if (isDismissed()) return
+	// FORK: AMP servers don't have Kyros file access in v1
+	if (isAmp.value || isDismissed()) return
 
 	try {
 		const blob = await client.kyros.files_v0.downloadFile('/logs/latest.log')
@@ -107,12 +110,9 @@ const dismissCrash = () => {
 
 provideConsoleManager({
 	logLines: modrinthServersConsole.output,
+	// FORK: AMP dispatch — routes to AMP plugin or Archon WebSocket
 	sendCommand: (cmd: string) => {
-		try {
-			client.archon.sockets.send(serverId, { event: 'command', cmd })
-		} catch (error) {
-			console.error('Error sending command:', error)
-		}
+		sendCommand(cmd).catch((error) => console.error('Error sending command:', error))
 	},
 	showCommandInput: true,
 	disableCommandInput: computed(() => serverPowerState.value !== 'running'),

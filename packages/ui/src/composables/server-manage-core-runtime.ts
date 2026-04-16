@@ -9,7 +9,12 @@ import type { ComputedRef, Ref } from 'vue'
 import { computed, reactive, ref, watch } from 'vue'
 
 import type { FileOperation } from '../layouts/shared/files-tab/types'
-import { injectModrinthClient, provideModrinthServerContext } from '../providers'
+import {
+	injectAmpBackend,
+	isAmpServerId,
+	injectModrinthClient,
+	provideModrinthServerContext,
+} from '../providers'
 import type { BusyReason } from '../providers/server-context'
 import { defineMessage } from './i18n'
 import { useModrinthServersConsole } from './server-console'
@@ -84,6 +89,8 @@ const mapPowerStateFromStateEvent = (
 export function useServerManageCoreRuntime(options: UseServerManageCoreRuntimeOptions) {
 	const client = injectModrinthClient()
 	const modrinthServersConsole = useModrinthServersConsole()
+	// FORK: AMP dispatch — null-safe, only set in app-frontend
+	const ampBackend = injectAmpBackend(null)
 
 	const shouldProcessEvent = () => (options.eventGuard ? options.eventGuard() : true)
 
@@ -100,6 +107,8 @@ export function useServerManageCoreRuntime(options: UseServerManageCoreRuntimeOp
 	const fsQueuedOps = ref<Archon.Websocket.v0.QueuedFilesystemOp[]>([])
 	const connectedSocketServerId = ref<string | null>(null)
 	const socketUnsubscribers = ref<SocketUnsubscriber[]>([])
+	// FORK: AMP dispatch — holds the unsubscribe fn for the active AMP subscription
+	let ampUnsubscribe: (() => Promise<void> | void) | null = null
 	const cpuData = ref<number[]>([])
 	const ramData = ref<number[]>([])
 
@@ -318,7 +327,11 @@ export function useServerManageCoreRuntime(options: UseServerManageCoreRuntimeOp
 
 		clearSocketListeners()
 
-		if (targetServerId) {
+		// FORK: AMP dispatch
+		if (ampUnsubscribe) {
+			void ampUnsubscribe()
+			ampUnsubscribe = null
+		} else if (targetServerId) {
 			client.archon.sockets.disconnect(targetServerId)
 		}
 
@@ -344,6 +357,39 @@ export function useServerManageCoreRuntime(options: UseServerManageCoreRuntimeOp
 		}
 
 		disconnectSocket(connectedSocketServerId.value ?? undefined)
+
+		// FORK: AMP dispatch — AMP servers use Tauri events; Modrinth uses Archon WebSocket
+		if (isAmpServerId(targetServerId) && ampBackend) {
+			try {
+				modrinthServersConsole.clear()
+				ampUnsubscribe = await ampBackend.subscribe(targetServerId, {
+					onConsole: (line) => {
+						modrinthServersConsole.addLegacyLog(line.text)
+					},
+					onStatus: (status) => {
+						if (!shouldProcessEvent()) return
+						const ps = status.powerState as Archon.Websocket.v0.PowerState
+						serverPowerState.value = ps
+						updateStats({
+							cpu_percent: status.cpuPercent,
+							ram_usage_bytes: status.ramUsageBytes,
+							ram_total_bytes: status.ramTotalBytes,
+							storage_usage_bytes: 0,
+							storage_total_bytes: 0,
+						})
+						uptimeSeconds.value = status.uptimeSeconds
+					},
+				})
+				connectedSocketServerId.value = targetServerId
+				isConnected.value = true
+				isWsAuthIncorrect.value = false
+				return true
+			} catch (error) {
+				console.error('[hosting/manage] Failed to subscribe to AMP server:', error)
+				isConnected.value = false
+				return false
+			}
+		}
 
 		try {
 			const safeConnectOptions = connectOptions.force ? { force: true } : undefined

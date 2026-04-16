@@ -2,7 +2,7 @@
 	<div
 		data-pyro-server-list-root
 		class="experimental-styles-within relative mx-auto mb-6 flex w-full flex-col p-6"
-		:class="serverList.length ? 'min-h-screen' : 'min-h-[calc(100vh-4.5rem)]'"
+		:class="(serverList.length || ampInstances.length) ? 'min-h-screen' : 'min-h-[calc(100vh-4.5rem)]'"
 	>
 		<ServersGuestPlanModal
 			ref="guestPlanModal"
@@ -33,6 +33,8 @@
 			@hide="clearPurchaseIntent"
 		/>
 		<ResubscribeModal ref="resubscribeModal" @resubscribe="handleResubscribeConfirm" />
+		<!-- FORK: AMP modal -->
+		<AddAmpServerModal v-if="ampBackend" ref="addAmpModal" @added="onAmpServerAdded" />
 
 		<div
 			v-if="hasError"
@@ -104,7 +106,7 @@
 			</div>
 
 			<div
-				v-else-if="serverList.length === 0 && !isPollingForNewServers"
+				v-else-if="serverList.length === 0 && ampInstances.length === 0 && !isPollingForNewServers"
 				key="empty"
 				class="flex h-full flex-col items-center justify-center gap-8 grow max-h-[1100px]"
 			>
@@ -139,6 +141,13 @@
 							<button @click="openPurchaseModal">
 								<PlusIcon />
 								{{ formatMessage(messages.newServerButton) }}
+							</button>
+						</ButtonStyled>
+						<!-- FORK: AMP add button -->
+						<ButtonStyled v-if="ampBackend" type="outlined">
+							<button @click="addAmpModal?.show()">
+								<PlugIcon />
+								Add external
 							</button>
 						</ButtonStyled>
 					</div>
@@ -187,6 +196,19 @@
 					<p class="text-contrast"><LoaderCircleIcon class="size-5 animate-spin" /></p>
 				</div>
 				<div v-else>{{ formatMessage(messages.noServersFound) }}</div>
+
+				<!-- FORK: AMP external servers -->
+				<div v-if="ampBackend && ampInstances.length > 0" class="flex flex-col gap-3 mt-3">
+					<div v-if="filteredData.length > 0" class="h-px bg-surface-5 my-1" />
+					<AmpServerListing
+						v-for="instance in ampInstances"
+						:key="instance.serverId"
+						:server-id="instance.serverId"
+						:name="instance.friendlyName"
+						:base-url="instance.baseUrl"
+						:running="instance.running"
+					/>
+				</div>
 			</div>
 		</Transition>
 	</div>
@@ -194,7 +216,7 @@
 
 <script setup lang="ts">
 import type { Archon, Labrinth } from '@modrinth/api-client'
-import { HammerIcon, LoaderCircleIcon, PlusIcon, SearchIcon } from '@modrinth/assets'
+import { HammerIcon, LoaderCircleIcon, PlugIcon, PlusIcon, SearchIcon } from '@modrinth/assets'
 import {
 	AutoLink,
 	ButtonStyled,
@@ -221,9 +243,11 @@ import type Stripe from 'stripe'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import AddAmpServerModal from '#ui/components/servers/AddAmpServerModal.vue'
+import AmpServerListing from '#ui/components/servers/AmpServerListing.vue'
 import MedalServerListing from '#ui/components/servers/marketing/MedalServerListing.vue'
 import ServerListing from '#ui/components/servers/ServerListing.vue'
-import { createHostingPurchaseIntentContext, provideHostingPurchaseIntent } from '#ui/providers'
+import { createHostingPurchaseIntentContext, injectAmpBackend, provideHostingPurchaseIntent } from '#ui/providers'
 
 const props = defineProps<{
 	stripePublishableKey: string
@@ -238,6 +262,51 @@ const client = injectModrinthClient()
 const loggedIn = computed(() => !!auth.user.value)
 const authReady = computed(() => auth.isReady?.value ?? true)
 const { formatMessage } = useVIntl()
+
+// FORK: AMP backend integration
+const ampBackend = injectAmpBackend(null)
+const addAmpModal = ref<InstanceType<typeof AddAmpServerModal> | null>(null)
+const ampRefreshKey = ref(0)
+
+type AmpInstanceDisplay = {
+	serverId: string
+	friendlyName: string
+	baseUrl: string
+	running: boolean
+}
+
+const { data: ampInstancesRaw, refetch: refetchAmpInstances } = useQuery({
+	queryKey: computed(() => ['amp', 'instances', ampRefreshKey.value]),
+	queryFn: async (): Promise<AmpInstanceDisplay[]> => {
+		if (!ampBackend) return []
+		const connections = await ampBackend.listConnections()
+		const results: AmpInstanceDisplay[] = []
+		for (const conn of connections) {
+			try {
+				const instances = await ampBackend.listInstances(conn.connectionId)
+				for (const inst of instances) {
+					results.push({
+						serverId: inst.serverId,
+						friendlyName: inst.friendlyName,
+						baseUrl: conn.baseUrl,
+						running: inst.running,
+					})
+				}
+			} catch {
+				// Connection temporarily unreachable — skip silently
+			}
+		}
+		return results
+	},
+	enabled: computed(() => !!ampBackend),
+})
+
+const ampInstances = computed<AmpInstanceDisplay[]>(() => ampInstancesRaw.value ?? [])
+
+function onAmpServerAdded() {
+	ampRefreshKey.value++
+	void refetchAmpInstances()
+}
 
 const messages = defineMessages({
 	errorTitle: { id: 'servers.manage.error.title', defaultMessage: 'Servers could not be loaded' },

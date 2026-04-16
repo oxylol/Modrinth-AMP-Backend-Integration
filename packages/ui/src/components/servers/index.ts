@@ -1,3 +1,5 @@
+export { default as AddAmpServerModal } from './AddAmpServerModal.vue'
+export { default as AmpServerListing } from './AmpServerListing.vue'
 export * from './backups'
 export * from './flows'
 export * from './icons'

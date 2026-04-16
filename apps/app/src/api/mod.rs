@@ -18,6 +18,7 @@ pub mod tags;
 pub mod utils;
 
 pub mod ads;
+pub mod amp;
 pub mod cache;
 pub mod files;
 pub mod friends;
@@ -46,6 +47,9 @@ pub enum TheseusSerializableError {
 
     #[error("Tauri error: {0}")]
     Tauri(#[from] tauri::Error),
+
+    #[error("AMP error: {0}")]
+    Amp(#[from] amp::AmpError),
 
     #[cfg(feature = "updater")]
     #[error("Updater error: {0}")]
@@ -105,12 +109,14 @@ macro_rules! impl_serialize {
 impl_serialize! {
     IO,
     Tauri,
+    Amp,
 }
 
 #[cfg(feature = "updater")]
 impl_serialize! {
     IO,
     Tauri,
+    Amp,
     Updater,
     Http,
 }

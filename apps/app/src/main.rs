@@ -235,6 +235,7 @@ fn main() {
         .plugin(api::cache::init())
         .plugin(api::files::init())
         .plugin(api::ads::init())
+        .plugin(api::amp::init())
         .plugin(api::friends::init())
         .plugin(api::worlds::init())
         .manage(PendingUpdateData::default())

@@ -16,9 +16,11 @@ either = { workspace = true }
 enumset = { workspace = true, features = ["serde"] }
 hyper = { workspace = true, features = ["server"] }
 hyper-util = { workspace = true }
+keyring = { version = "3.6", features = ["windows-native", "apple-native", "sync-secret-service"] }
 native-dialog = { workspace = true }
 paste = { workspace = true }
 path-util = { workspace = true }
+reqwest = { workspace = true, features = ["json", "rustls-tls"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_with = { workspace = true }

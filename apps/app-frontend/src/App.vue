@@ -48,6 +48,7 @@ import {
 	PopupNotificationPanel,
 	ProgressSpinner,
 	provideModalBehavior,
+	provideAmpBackend,
 	provideModrinthClient,
 	provideNotificationManager,
 	providePageContext,
@@ -67,6 +68,8 @@ import { saveWindowState, StateFlags } from '@tauri-apps/plugin-window-state'
 import { $fetch } from 'ofetch'
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
+// FORK: AMP backend
+import { createTauriAmpBackend } from '@/composables/useAmpBackend'
 
 import ModrinthAppLogo from '@/assets/modrinth_app.svg?component'
 import ModrinthLoadingIndicator from '@/components/LoadingIndicatorBar.vue'
@@ -155,6 +158,8 @@ const tauriApiClient = new TauriModrinthClient({
 	],
 })
 provideModrinthClient(tauriApiClient)
+// FORK: AMP backend — provides Tauri-backed AmpBackend to all server panel components
+provideAmpBackend(createTauriAmpBackend())
 providePageContext({
 	hierarchicalSidebarAvailable: ref(true),
 	showAds: ref(false),

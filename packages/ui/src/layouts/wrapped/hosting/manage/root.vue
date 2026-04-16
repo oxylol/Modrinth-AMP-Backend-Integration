@@ -474,6 +474,7 @@ import type { ServerSettingsTabId } from '#ui/layouts/shared/server-settings'
 import {
 	injectModrinthClient,
 	injectNotificationManager,
+	isAmpServerId,
 	provideServerSettingsModal,
 } from '#ui/providers'
 import { formatLoaderLabel } from '#ui/utils/loaders'
@@ -842,6 +843,8 @@ watch(serverData, (data) => {
 	log('serverData changed', !!data)
 })
 
+// FORK: AMP dispatch — AMP servers expose Overview only in v1
+const isAmp = isAmpServerId(props.serverId)
 const navLinks = computed<Tab[]>(() => [
 	{
 		label: 'Overview',
@@ -849,24 +852,28 @@ const navLinks = computed<Tab[]>(() => [
 		icon: LayoutTemplateIcon,
 		subpages: [],
 	},
-	{
-		label: 'Content',
-		href: `/hosting/manage/${props.serverId}/content`,
-		icon: BoxesIcon,
-		subpages: ['mods', 'datapacks'],
-	},
-	{
-		label: 'Files',
-		href: `/hosting/manage/${props.serverId}/files`,
-		icon: FolderOpenIcon,
-		subpages: [],
-	},
-	{
-		label: 'Backups',
-		href: `/hosting/manage/${props.serverId}/backups`,
-		icon: DatabaseBackupIcon,
-		subpages: [],
-	},
+	...(!isAmp
+		? [
+				{
+					label: 'Content',
+					href: `/hosting/manage/${props.serverId}/content`,
+					icon: BoxesIcon,
+					subpages: ['mods', 'datapacks'],
+				},
+				{
+					label: 'Files',
+					href: `/hosting/manage/${props.serverId}/files`,
+					icon: FolderOpenIcon,
+					subpages: [],
+				},
+				{
+					label: 'Backups',
+					href: `/hosting/manage/${props.serverId}/backups`,
+					icon: DatabaseBackupIcon,
+					subpages: [],
+				},
+			]
+		: []),
 	...props.additionalTabs,
 ])
 
