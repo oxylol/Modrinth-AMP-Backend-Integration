@@ -74,6 +74,7 @@
 		"utils:default",
 		"ads:default",
 		"friends:default",
-		"worlds:default"
+		"worlds:default",
+		"amp:default"
 	]
 }

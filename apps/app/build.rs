@@ -309,6 +309,25 @@ fn main() {
                     .default_permission(
                         DefaultPermissionRule::AllowAllCommands,
                     ),
+            )
+            .plugin(
+                "amp",
+                InlinedPlugin::new()
+                    .commands(&[
+                        "amp_test_connection",
+                        "amp_add_connection",
+                        "amp_remove_connection",
+                        "amp_list_connections",
+                        "amp_list_instances",
+                        "amp_power",
+                        "amp_send_command",
+                        "amp_get_status",
+                        "amp_subscribe",
+                        "amp_unsubscribe",
+                    ])
+                    .default_permission(
+                        DefaultPermissionRule::AllowAllCommands,
+                    ),
             ),
     )
     .expect("Failed to run tauri-build");
