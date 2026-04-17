@@ -140,6 +140,8 @@
 				<template #actions>
 					<div class="flex gap-2">
 						<PanelServerActionButton :disabled="!!installError" />
+						<!-- FORK: AMP servers don't have settings in v1 -->
+						<template v-if="!isAmp">
 						<Tooltip
 							theme="dismissable-prompt"
 							:triggers="[]"
@@ -187,6 +189,7 @@
 							:show-copy-id-action="showCopyIdAction"
 							:show-debug-info="showAdvancedDebugInfo"
 						/>
+						</template>
 					</div>
 				</template>
 			</ServerManageHeader>
@@ -472,9 +475,11 @@ import { useServerManageCoreRuntime } from '#ui/composables/server-manage-core-r
 import type { LogLine } from '#ui/layouts/shared/console'
 import type { ServerSettingsTabId } from '#ui/layouts/shared/server-settings'
 import {
+	injectAmpBackend,
 	injectModrinthClient,
 	injectNotificationManager,
 	isAmpServerId,
+	parseAmpServerId,
 	provideServerSettingsModal,
 } from '#ui/providers'
 import { formatLoaderLabel } from '#ui/utils/loaders'
@@ -573,6 +578,9 @@ const settingsHintMessages = defineMessages({
 const { addNotification } = injectNotificationManager()
 const client = injectModrinthClient()
 const isNuxt = computed(() => client instanceof NuxtModrinthClient)
+
+// FORK: AMP backend integration
+const ampBackend = injectAmpBackend(null)
 const queryClient = useQueryClient()
 const route = useRoute()
 const router = useRouter()
@@ -600,9 +608,48 @@ function dismissSettingsHint() {
 const serverSettingsModal = ref<InstanceType<typeof ServerSettingsModal> | null>(null)
 const confirmLeaveModal = ref<InstanceType<typeof ConfirmLeaveModal>>()
 
+// FORK: AMP dispatch — for AMP server IDs, return synthetic data instead of calling Archon
 const { data: serverData, error: serverQueryError } = useQuery({
 	queryKey: ['servers', 'detail', props.serverId],
-	queryFn: () => client.archon.servers_v0.get(props.serverId)!,
+	queryFn: async (): Promise<Archon.Servers.v0.Server> => {
+		if (isAmp) {
+			let name = 'AMP Server'
+			if (ampBackend) {
+				const parsed = parseAmpServerId(props.serverId)
+				if (parsed) {
+					try {
+						const instances = await ampBackend.listInstances(parsed.connectionId)
+						const match = instances.find((i) => i.serverId === props.serverId)
+						if (match) name = match.friendlyName
+					} catch { /* connection unreachable */ }
+				}
+			}
+			return {
+				server_id: props.serverId,
+				name,
+				owner_id: '',
+				net: { ip: '', port: 0, domain: null },
+				game: 'Minecraft',
+				backup_quota: 0,
+				used_backup_quota: 0,
+				status: 'available',
+				suspension_reason: null,
+				loader: null,
+				loader_version: null,
+				mc_version: null,
+				upstream: null,
+				sftp_username: '',
+				sftp_password: '',
+				sftp_host: '',
+				datacenter: '',
+				notices: [],
+				node: { token: '', instance: '' },
+				flows: { intro: false },
+				is_medal: false,
+			} as Archon.Servers.v0.Server
+		}
+		return client.archon.servers_v0.get(props.serverId)!
+	},
 })
 
 function updateServerData(patch: Partial<Archon.Servers.v0.Server>) {
@@ -614,6 +661,8 @@ function updateServerData(patch: Partial<Archon.Servers.v0.Server>) {
 }
 
 const serverError = computed(() => {
+	// FORK: AMP servers never have Archon errors
+	if (isAmp) return null
 	const err = serverQueryError.value
 	if (err instanceof ModrinthApiError) return err
 	return err ? ModrinthApiError.fromUnknown(err) : null
@@ -622,10 +671,11 @@ const serverError = computed(() => {
 const { data: serverFull } = useQuery({
 	queryKey: ['servers', 'v1', 'detail', props.serverId],
 	queryFn: () => client.archon.servers_v1.get(props.serverId),
+	enabled: computed(() => !isAmp),
 })
 
 const worldId = computed(() => {
-	if (!serverFull.value) return null
+	if (isAmp || !serverFull.value) return null
 	const activeWorld = serverFull.value.worlds.find((w) => w.is_active)
 	return activeWorld?.id ?? serverFull.value.worlds[0]?.id ?? null
 })
@@ -1417,6 +1467,15 @@ async function testNodeReachability(): Promise<boolean> {
 }
 
 function initializeServer() {
+	// FORK: AMP servers skip node reachability and Archon-specific subscriptions
+	if (isAmp) {
+		void connectSocket(props.serverId, {})
+			.finally(() => {
+				isLoading.value = false
+			})
+		return
+	}
+
 	if (serverData.value?.status === 'suspended') {
 		isLoading.value = false
 		return

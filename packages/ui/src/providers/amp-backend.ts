@@ -89,3 +89,13 @@ const AMP_SERVER_ID_PREFIX = 'amp_'
 export function isAmpServerId(serverId: string | null | undefined): boolean {
 	return !!serverId && serverId.startsWith(AMP_SERVER_ID_PREFIX)
 }
+
+export function parseAmpServerId(
+	serverId: string,
+): { connectionId: string; instanceId: string } | null {
+	if (!isAmpServerId(serverId)) return null
+	const rest = serverId.slice(AMP_SERVER_ID_PREFIX.length)
+	const idx = rest.indexOf('_')
+	if (idx === -1) return null
+	return { connectionId: rest.slice(0, idx), instanceId: rest.slice(idx + 1) }
+}
