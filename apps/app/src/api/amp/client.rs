@@ -72,21 +72,15 @@ impl AmpClient {
 
     async fn login(&self) -> Result<String, AmpError> {
         #[derive(Serialize)]
-        #[serde(rename_all = "PascalCase")]
         struct LoginBody<'a> {
+            #[serde(rename = "username")]
             username: &'a str,
+            #[serde(rename = "password")]
             password: &'a str,
+            #[serde(rename = "token")]
             token: &'a str,
+            #[serde(rename = "rememberMe")]
             remember_me: bool,
-        }
-        #[derive(Deserialize)]
-        struct LoginResponse {
-            #[serde(rename = "sessionID", default)]
-            session_id: Option<String>,
-            #[serde(default)]
-            success: Option<bool>,
-            #[serde(rename = "resultReason", default)]
-            result_reason: Option<String>,
         }
 
         let url = self.endpoint_url("Core/Login", true)?;
@@ -97,23 +91,56 @@ impl AmpClient {
             remember_me: false,
         };
         let resp = self.http.post(url).json(&body).send().await?;
-        if !resp.status().is_success() {
+        let status = resp.status();
+        let raw = resp.text().await.unwrap_or_default();
+
+        if !status.is_success() {
             return Err(AmpError::Auth(format!(
-                "HTTP {} during login",
-                resp.status()
+                "HTTP {} during login: {}",
+                status,
+                raw.chars().take(200).collect::<String>()
             )));
         }
-        let parsed: LoginResponse = resp.json().await?;
-        if parsed.success == Some(false) || parsed.session_id.is_none() {
-            return Err(AmpError::Auth(
-                parsed
-                    .result_reason
-                    .unwrap_or_else(|| "Invalid credentials".to_owned()),
-            ));
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|e| {
+                AmpError::Auth(format!(
+                    "Non-JSON login response ({e}): {}",
+                    raw.chars().take(300).collect::<String>()
+                ))
+            })?;
+
+        // AMP uses camelCase field names in responses
+        let session_id = parsed
+            .get("sessionID")
+            .or_else(|| parsed.get("SessionID"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_owned());
+
+        let success = parsed
+            .get("success")
+            .or_else(|| parsed.get("Success"))
+            .and_then(|v| v.as_bool());
+
+        if success == Some(false) || session_id.is_none() {
+            let reason = parsed
+                .get("resultReason")
+                .or_else(|| parsed.get("ResultReason"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("Invalid credentials");
+            return Err(AmpError::Auth(format!(
+                "{reason} (response: {})",
+                raw.chars().take(300).collect::<String>()
+            )));
         }
-        let session = parsed
-            .session_id
-            .ok_or_else(|| AmpError::Auth("No sessionID in response".to_owned()))?;
+
+        let session = session_id
+            .ok_or_else(|| AmpError::Auth(format!(
+                "No sessionID in login response: {}",
+                raw.chars().take(300).collect::<String>()
+            )))?;
         *self.session_id.write().await = Some(session.clone());
         Ok(session)
     }
