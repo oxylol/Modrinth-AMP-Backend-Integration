@@ -72,11 +72,11 @@ impl AmpClient {
 
     async fn login(&self) -> Result<String, AmpError> {
         #[derive(Serialize)]
+        #[serde(rename_all = "PascalCase")]
         struct LoginBody<'a> {
             username: &'a str,
             password: &'a str,
             token: &'a str,
-            #[serde(rename = "rememberMe")]
             remember_me: bool,
         }
         #[derive(Deserialize)]
