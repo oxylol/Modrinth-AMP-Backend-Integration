@@ -104,7 +104,13 @@ jobs:
       - name: Set application version and environment
         shell: bash
         run: |
-          APP_VERSION="$(git describe --tags --always | sed -E 's/-([0-9]+)-(g[0-9a-fA-F]+)$/-canary+\1.\2/')"
+          RAW_VERSION="$(git describe --tags --always 2>/dev/null || echo '')"
+          if echo "$RAW_VERSION" | grep -qE '^v?[0-9]+\.[0-9]+'; then
+            APP_VERSION="$(echo "$RAW_VERSION" | sed -E 's/-([0-9]+)-(g[0-9a-fA-F]+)$/-canary+\1.\2/')"
+          else
+            SHORT_SHA="$(git rev-parse --short HEAD)"
+            APP_VERSION="0.1.0-dev+${SHORT_SHA}"
+          fi
           BUILD_ENVIRONMENT="${{ inputs.environment || 'prod' }}"
           echo "Setting application version to $APP_VERSION"
           echo "Using environment $BUILD_ENVIRONMENT"
