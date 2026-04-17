@@ -176,11 +176,9 @@ async function testConnection() {
 		testResult.value = result
 		testPassed.value = result.ok
 	} catch (error) {
-		const msg =
-			error instanceof Error ? error.message : typeof error === 'string' ? error : String(error)
 		testResult.value = {
 			ok: false,
-			message: msg || 'Connection failed',
+			message: extractErrorMessage(error) || 'Connection failed',
 			instanceCount: 0,
 		}
 		testPassed.value = false
@@ -205,16 +203,21 @@ async function addServer() {
 		emit('added')
 		hide()
 	} catch (error) {
-		const msg =
-			error instanceof Error ? error.message : typeof error === 'string' ? error : String(error)
 		testResult.value = {
 			ok: false,
-			message: msg || 'Failed to add server',
+			message: extractErrorMessage(error) || 'Failed to add server',
 			instanceCount: 0,
 		}
 	} finally {
 		isAdding.value = false
 	}
+}
+
+function extractErrorMessage(error: unknown): string {
+	if (error instanceof Error) return error.message
+	if (typeof error === 'string') return error
+	if (error && typeof error === 'object' && 'message' in error) return String((error as Record<string, unknown>).message)
+	return String(error)
 }
 
 defineExpose({ show, hide })
