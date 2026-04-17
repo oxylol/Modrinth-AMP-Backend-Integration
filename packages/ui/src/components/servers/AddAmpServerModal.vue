@@ -176,9 +176,11 @@ async function testConnection() {
 		testResult.value = result
 		testPassed.value = result.ok
 	} catch (error) {
+		const msg =
+			error instanceof Error ? error.message : typeof error === 'string' ? error : String(error)
 		testResult.value = {
 			ok: false,
-			message: error instanceof Error ? error.message : 'Connection failed',
+			message: msg || 'Connection failed',
 			instanceCount: 0,
 		}
 		testPassed.value = false
@@ -203,9 +205,11 @@ async function addServer() {
 		emit('added')
 		hide()
 	} catch (error) {
+		const msg =
+			error instanceof Error ? error.message : typeof error === 'string' ? error : String(error)
 		testResult.value = {
 			ok: false,
-			message: error instanceof Error ? error.message : 'Failed to add server',
+			message: msg || 'Failed to add server',
 			instanceCount: 0,
 		}
 	} finally {
