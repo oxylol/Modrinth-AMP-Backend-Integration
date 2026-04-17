@@ -115,6 +115,13 @@
 					@click-new-server="openPurchaseModal"
 					@click-sign-in="handleSignIn"
 				/>
+				<!-- FORK: AMP add button shown even on empty/unauthenticated state -->
+				<ButtonStyled v-if="ampBackend" type="outlined">
+					<button @click="addAmpModal?.show()">
+						<PlugIcon />
+						Add external server
+					</button>
+				</ButtonStyled>
 			</div>
 
 			<div v-else key="list">
